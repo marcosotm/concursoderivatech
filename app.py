@@ -80,7 +80,7 @@ app.layout = html.Div(
      State('vencimiento', 'value'),
      State('strike', 'value')]
 )
-def build_graph(boton, ticker, vencimiento, strike):
+def build_graph(boton, ticker: str, vencimiento, strike):
     if ticker is None:
         raise PreventUpdate
     else:
@@ -168,5 +168,5 @@ def options_strikes(vencimiento, ticker):
 
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
 
