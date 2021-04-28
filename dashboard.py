@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 import dash_auth
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
-server = app.server
+# server = app.server
 
 
 auth = dash_auth.BasicAuth(
@@ -21,7 +21,8 @@ auth = dash_auth.BasicAuth(
      'andres': 'derivatech',
      'angel': 'derivatech',
      'eduardo': 'derivatech',
-     'horacio': 'derivatech'}
+     'horacio': 'derivatech',
+     'cinthia': 'derivatech'}
 )
 
 
