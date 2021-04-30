@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 import dash_auth
 
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
-# server = app.server
+#server = app.server
 
 
 auth = dash_auth.BasicAuth(
@@ -60,6 +60,16 @@ app.layout = html.Div(
 
                         html.Br(),
 
+                        html.Span(['Dirección']),
+                        dcc.Dropdown(id='direccion',
+                                     options=[
+                                        {'label': 'Up', 'value': 'Up'},
+                                        {'label': 'Down', 'value': 'Down'}
+                                     ],
+                                     value='Up'),
+
+                        html.Br(),
+
                         html.Button('Graficar', id='boton_1', n_clicks=0),
 
                         html.Br(),
@@ -79,9 +89,10 @@ app.layout = html.Div(
     [Input('boton_1', 'n_clicks')],
     [State('ticker', 'value'),
      State('vencimiento', 'value'),
-     State('strike', 'value')]
+     State('strike', 'value'),
+     State('direccion', 'value')]
 )
-def build_graph(boton, ticker: str, vencimiento, strike):
+def build_graph(boton, ticker: str, vencimiento, strike, direccion):
     if ticker is None:
         raise PreventUpdate
     else:
@@ -98,51 +109,56 @@ def build_graph(boton, ticker: str, vencimiento, strike):
         if strike:
             precio.add_hline(y=strike)
 
-            opt = web.YahooOptions(ticker)
-            opt = opt.get_all_data().reset_index()
-            opt.set_index('Expiry')
-            calls = opt.loc[(opt.Type == 'call') & (opt.Expiry == vencimiento) & (
-                        opt.Strike >= opt.loc[0].Underlying_Price * 0.80 - 5) & (
-                                        opt.Strike <= strike)].reset_index().drop(['index'], axis=1)
+            if direccion == 'Up':
+                opt = web.YahooOptions(ticker)
+                opt = opt.get_all_data().reset_index()
+                opt.set_index('Expiry')
+                calls = opt.loc[(opt.Type == 'call') & (opt.Expiry == vencimiento) & (
+                            opt.Strike >= opt.loc[0].Underlying_Price * 0.80 - 5) & (
+                                            opt.Strike <= strike)].reset_index().drop(['index'], axis=1)
 
-            spreads_dic = {
-                'Long': [{'K': calls['Strike'].loc[i], 'Price': calls['Ask'].loc[i]} for i in range(len(calls))],
-                'Short': [{'K': calls['Strike'].loc[i], 'Price': calls['Bid'].loc[i]} for i in range(len(calls))]}
+                longs = [{'K': calls['Strike'].loc[i], 'Price': calls['Ask'].loc[i]} for i in range(len(calls))]
 
-            spreads = pd.DataFrame(columns=['Long K', 'Short K', 'Long Price', 'Short Price', 'Spread', 'Prima'])
+                spreads = []
 
-            l = len(spreads_dic['Long'])
+                short_p = calls['Bid'].iloc[-1]
 
-            for i in range(l):
+                l = len(longs)
 
-                for k in range(len(spreads_dic['Short']) - i):
-                    long_k = spreads_dic['Long'][i]['K']
-                    short_k = spreads_dic['Short'][k + i]['K']
-                    if not long_k == short_k:
-                        spreads.loc[k + i * l, 'Long K'] = long_k
-                        spreads.loc[k + i * l, 'Short K'] = short_k
-                        spread = short_k - long_k
-                        spreads.loc[k + i * l, 'Spread'] = spread
-                        long_p = spreads_dic['Long'][i]['Price']
-                        short_p = spreads_dic['Short'][k + i]['Price']
-                        spreads.loc[k + i * l, 'Long Price'] = long_p
-                        spreads.loc[k + i * l, 'Short Price'] = short_p
-                        prima = (long_p - short_p + 12.16 / 100) / (short_k - long_k)
-                        spreads.loc[k + i * l, 'Prima'] = prima
+                for i in range(l):
 
-            spreads = spreads.loc[spreads.Spread != 0].sort_index().reset_index().drop(['index'], axis=1)
+                    if not longs[i]['K'] == strike:
+                        prima = (longs[i]['Price'] - short_p + 12.12 / 100) / (strike - longs[i]['K'])
+                        spreads.append(prima)
 
-            result = spreads.loc[spreads['Short K'] == strike].sort_values('Prima')
-            result['Rend Real'] = (1 / result.Prima - 1) * 100
-            result['Rend Cliente'] = (1 / (result.Prima / 0.75) - 1) * 100
-            result['Break even'] = result['Long K'] + result.Prima * (result['Short K'] - result['Long K'])
-            result['Spread Cost'] = (result['Long Price'] - result['Short Price']) * 100 + 12.16
-            result['Spread Price'] = result['Spread Cost'] / 0.8
-            result = result.reset_index().drop(['index'], axis=1)
+                result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
 
-            result = result['Rend Cliente'][0].round(2)
+                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(result))
 
-        return (precio, 'El rendimiento de la estrategia sería de {}%'.format(result))
+            else:
+                opt = web.YahooOptions(ticker)
+                opt = opt.get_all_data().reset_index()
+                opt.set_index('Expiry')
+                puts = opt.loc[(opt.Type == 'put') & (opt.Expiry == vencimiento) & (opt.Strike >= strike) & (
+                            opt.Strike <= strike * 1.25)].reset_index().drop(['index'], axis=1)
+
+                longs = [{'K': puts['Strike'].loc[i], 'Price': puts['Ask'].loc[i]} for i in range(len(puts))]
+
+                spreads = []
+
+                short_p = puts['Bid'].loc[0]
+
+                l = len(longs)
+
+                for i in range(l):
+
+                    if not longs[i]['K'] == strike:
+                        prima = (longs[i]['Price'] - short_p + 12.12 / 100) / (longs[i]['K'] - strike)
+                        spreads.append(prima)
+
+                result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
+
+                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(result))
 
 
 @app.callback(
@@ -163,7 +179,9 @@ def expiry_options(ticker):
 )
 def options_strikes(vencimiento, ticker):
     opts = web.YahooOptions(ticker).get_all_data().reset_index()
-    opts = opts.loc[opts.Expiry == vencimiento]
+    opts = opts.loc[(opts.Expiry == vencimiento) &
+                    (opts.Strike >= opts.loc[0].Underlying_Price * 0.70) &
+                    (opts.Strike <= opts.loc[0].Underlying_Price * 1.30)]
 
     return [{'label': opt, 'value': opt} for opt in sorted(opts.Strike.unique())]
 
