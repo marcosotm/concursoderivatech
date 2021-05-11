@@ -43,6 +43,10 @@ app.layout = html.Div(
                             type='text',
                             placeholder='Ingrese el Ticker'),
 
+                        html.Br(),
+
+                        html.Div(id='subyacente', style={'text-align': 'center'}),
+
                         html.Span(['Fecha de vencimiento:']),
                         dcc.Dropdown(id='vencimiento'),
 
@@ -185,6 +189,21 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
                 result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
 
                 return (precio, 'El rendimiento de la estrategia sería de {}%'.format(round(result, 2)))
+
+
+@app.callback(
+    Output('subyacente', 'children'),
+    [Input('ticker', 'value')]
+)
+def precio_subyacente(ticker):
+    response = requests.get('https://sandbox.tradier.com/v1/markets/quotes',
+                            params={'symbols': ticker, 'greeks': 'false'},
+                            headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
+                                     'Accept': 'application/json'}
+                            )
+    json_response = response.json()
+
+    return 'El precio actual de la acción es de ${}'.format(json_response['quotes']['quote']['last'])
 
 
 @app.callback(
