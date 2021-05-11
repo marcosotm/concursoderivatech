@@ -1,7 +1,7 @@
 import pandas as pd
-import pandas_datareader.data as web
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
 
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
@@ -25,16 +25,6 @@ auth = dash_auth.BasicAuth(
      'horacio': 'derivatech',
      'cinthia': 'derivatech'}
 )
-
-
-def get_adj_closes(tickers, start_date='2021-01-01', end_date=None, freq='d'):
-    # Fecha inicio por defecto (start_date='2010-01-01') y fecha fin por defecto (end_date=today)
-    # Descargamos DataFrame con todos los datos
-    closes = web.YahooDailyReader(symbols=tickers, start=start_date, end=end_date, interval=freq).read()
-    # Se ordenan los índices de manera ascendente
-    closes.sort_index(inplace=True)
-    return closes
-
 
 app.layout = html.Div(
 
@@ -85,7 +75,7 @@ app.layout = html.Div(
 
                         html.Br(),
 
-                        html.Div(id='rendimiento')
+                        html.Div(id='rendimiento', style={'text-align': 'center'})
                     ],
                     width=3),
 
@@ -109,12 +99,19 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
         raise PreventUpdate
     else:
         ticker = ticker.upper()
-        df1 = get_adj_closes(ticker)
+        response = requests.get('https://sandbox.tradier.com/v1/markets/history',
+                                params={'symbol': ticker, 'interval': 'daily', 'start': '2021-01-01'},
+                                headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
+                                         'Accept': 'application/json'}
+                                )
+        json_response = response.json()
+
+        df1 = pd.DataFrame(json_response['history']['day'])
 
         if grafico == 'Velas':
-            precio = go.Figure(data=[go.Candlestick(x=df1.index,
-                                                    open=df1['Open'], high=df1['High'],
-                                                    low=df1['Low'], close=df1['Close'])
+            precio = go.Figure(data=[go.Candlestick(x=df1['date'],
+                                                    open=df1['open'], high=df1['high'],
+                                                    low=df1['low'], close=df1['close'])
                                      ])
 
             precio.update_layout(yaxis={'title': 'Precio'},
@@ -122,7 +119,7 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
                                  title={'text': 'Precio {0}'.format(ticker),
                                         'font': {'size': 28}, 'x': 0.5, 'xanchor': 'center'})
         else:
-            precio = px.line(df1, x=df1.index, y=['Adj Close'], height=600)
+            precio = px.line(df1, x=df1['date'], y=['close'], height=600)
             precio.update_layout(yaxis={'title': 'Precio'},
                                  title={'text': 'Precio {0}'.format(ticker),
                                         'font': {'size': 28}, 'x': 0.5, 'xanchor': 'center'})
@@ -133,20 +130,26 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
         if strike:
             precio.add_hline(y=strike)
 
-            opt = web.YahooOptions(ticker)
-            opt = opt.get_all_data().reset_index()
-            opt.set_index('Expiry')
+            underlying_price = df1.iloc[-1].close
+
+            response = requests.get('https://sandbox.tradier.com/v1/markets/options/chains',
+                                    params={'symbol': ticker, 'expiration': vencimiento, 'greeks': 'false'},
+                                    headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
+                                             'Accept': 'application/json'}
+                                    )
+            json_response = response.json()
+            chain = pd.DataFrame(json_response['options']['option'])
 
             if direccion == 'Up':
-                calls = opt.loc[(opt.Type == 'call') & (opt.Expiry == vencimiento) & (
-                        opt.Strike >= opt.loc[0].Underlying_Price * 0.80 - 5) & (
-                                        opt.Strike <= strike)].reset_index().drop(['index'], axis=1)
+                calls = chain.loc[(chain.option_type == 'call') &
+                                  (chain.strike >= underlying_price * 0.80 - 5) &
+                                  (chain.strike <= strike)].reset_index().drop(['index'], axis=1)
 
-                longs = [{'K': calls['Strike'].loc[i], 'Price': calls['Ask'].loc[i]} for i in range(len(calls))]
+                longs = [{'K': calls['strike'].loc[i], 'Price': calls['ask'].loc[i]} for i in range(len(calls))]
 
                 spreads = []
 
-                short_p = calls['Bid'].iloc[-1]
+                short_p = calls.iloc[-1]['bid']
 
                 l = len(longs)
 
@@ -158,17 +161,18 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
 
                 result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
 
-                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(result))
+                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(round(result, 2)))
 
             else:
-                puts = opt.loc[(opt.Type == 'put') & (opt.Expiry == vencimiento) & (opt.Strike >= strike) & (
-                        opt.Strike <= strike * 1.25)].reset_index().drop(['index'], axis=1)
+                puts = chain.loc[(chain.option_type == 'put') &
+                                 (chain.strike >= strike) &
+                                 (chain.strike <= strike * 1.25)].reset_index().drop(['index'], axis=1)
 
-                longs = [{'K': puts['Strike'].loc[i], 'Price': puts['Ask'].loc[i]} for i in range(len(puts))]
+                longs = [{'K': puts['strike'].loc[i], 'Price': puts['ask'].loc[i]} for i in range(len(puts))]
 
                 spreads = []
 
-                short_p = puts['Bid'].loc[0]
+                short_p = puts['bid'].loc[0]
 
                 l = len(longs)
 
@@ -180,7 +184,7 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
 
                 result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
 
-                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(result))
+                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(round(result, 2)))
 
 
 @app.callback(
@@ -188,10 +192,13 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
     [Input('ticker', 'value')]
 )
 def expiry_options(ticker):
-    opt = sorted(web.YahooOptions(ticker).get_all_data().reset_index().Expiry.unique())
-    vencimiento = ([pd.to_datetime(str(i)).strftime('%Y-%m-%d') for i in opt])
-
-    return [{'label': opt, 'value': opt} for opt in vencimiento]
+    response = requests.get('https://sandbox.tradier.com/v1/markets/options/expirations',
+                            params={'symbol': 'AAPL', 'includeAllRoots': 'true', 'strikes': 'false'},
+                            headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
+                                     'Accept': 'application/json'}
+                            )
+    json_response = response.json()
+    return [{'label': opt, 'value': opt} for opt in json_response['expirations']['date']]
 
 
 @app.callback(
@@ -200,12 +207,14 @@ def expiry_options(ticker):
      Input('ticker', 'value')]
 )
 def options_strikes(vencimiento, ticker):
-    opts = web.YahooOptions(ticker).get_all_data().reset_index()
-    opts = opts.loc[(opts.Expiry == vencimiento) &
-                    (opts.Strike >= opts.loc[0].Underlying_Price * 0.70) &
-                    (opts.Strike <= opts.loc[0].Underlying_Price * 1.30)]
+    response = requests.get('https://sandbox.tradier.com/v1/markets/options/strikes',
+                            params={'symbol': ticker, 'expiration': vencimiento},
+                            headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
+                                     'Accept': 'application/json'}
+                            )
+    json_response = response.json()
 
-    return [{'label': opt, 'value': opt} for opt in sorted(opts.Strike.unique())]
+    return [{'label': opt, 'value': opt} for opt in json_response['strikes']['strike']]
 
 
 if __name__ == '__main__':
