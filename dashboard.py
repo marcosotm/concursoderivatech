@@ -6,6 +6,7 @@ import requests
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_html_components as html
+import dash_table
 import dash
 
 from dash.dependencies import Input, Output, State
@@ -26,6 +27,8 @@ auth = dash_auth.BasicAuth(
      'cinthia': 'derivatech'}
 )
 
+dt = pd.DataFrame(columns=['Subyacente', 'Precio_objetivo', 'Fecha_vencimiento', 'Direccion', 'Rendimiento'])
+
 app.layout = html.Div(
 
     children=[
@@ -35,6 +38,8 @@ app.layout = html.Div(
 
         dbc.Row(
             children=[
+                dbc.Col(width=1),
+
                 dbc.Col(
                     children=[
                         html.Span(['Ingrese un Ticker:']),
@@ -79,11 +84,30 @@ app.layout = html.Div(
 
                         html.Br(),
 
-                        html.Div(id='rendimiento', style={'text-align': 'center'})
+                        html.Div(id='rendimiento', style={'text-align': 'center'}),
+
+                        html.Br(),
+
+                        html.Button('Guardar', id='boton_2', n_clicks=0),
+
                     ],
                     width=3),
 
-                dbc.Col(dcc.Graph(id="precio"), width=9)
+                dbc.Col(
+                    children=[
+                        dcc.Graph(id="precio"),
+
+                        dash_table.DataTable(
+                            id='table',
+                            columns=(
+                                [{'id': c, 'name': c} for c in dt.columns]
+                            ),
+                            data=[]
+                        )
+                    ], width=7),
+
+                dbc.Col(width=1)
+
             ])
     ])
 
@@ -102,7 +126,6 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
     if ticker is None:
         raise PreventUpdate
     else:
-        ticker = ticker.upper()
         response = requests.get('https://sandbox.tradier.com/v1/markets/history',
                                 params={'symbol': ticker, 'interval': 'daily', 'start': '2021-01-01'},
                                 headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
@@ -120,12 +143,12 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
 
             precio.update_layout(yaxis={'title': 'Precio'},
                                  xaxis_rangeslider_visible=False,
-                                 title={'text': 'Precio {0}'.format(ticker),
+                                 title={'text': 'Precio {0}'.format(ticker.upper()),
                                         'font': {'size': 28}, 'x': 0.5, 'xanchor': 'center'})
-        else:
-            precio = px.line(df1, x=df1['date'], y=['close'], height=600)
+        elif grafico == 'Linear':
+            precio = px.line(df1, x=df1['date'], y=['close'], height=400)
             precio.update_layout(yaxis={'title': 'Precio'},
-                                 title={'text': 'Precio {0}'.format(ticker),
+                                 title={'text': 'Precio {0}'.format(ticker.upper()),
                                         'font': {'size': 28}, 'x': 0.5, 'xanchor': 'center'})
 
         if vencimiento:
@@ -165,7 +188,7 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
 
                 result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
 
-                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(round(result, 2)))
+                return (precio, '{}%'.format(round(result, 2)))
 
             else:
                 puts = chain.loc[(chain.option_type == 'put') &
@@ -188,7 +211,7 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
 
                 result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
 
-                return (precio, 'El rendimiento de la estrategia sería de {}%'.format(round(result, 2)))
+                return (precio, '{}%'.format(round(result, 2)))
 
 
 @app.callback(
@@ -234,6 +257,31 @@ def options_strikes(vencimiento, ticker):
     json_response = response.json()
 
     return [{'label': opt, 'value': opt} for opt in json_response['strikes']['strike']]
+
+
+@app.callback(
+    Output('table', 'data'),
+    Input('boton_2', 'n_clicks'),
+    [State('table', 'data'),
+     State('table', 'columns'),
+     State('ticker', 'value'),
+     State('strike', 'value'),
+     State('vencimiento', 'value'),
+     State('direccion', 'value'),
+     State('rendimiento', 'children')]
+)
+def add_row(n_clicks, rows, columns, ticker, strike, vencimiento, direccion, rendimiento):
+    info = {'Subyacente': ticker.upper(),
+            'Precio_objetivo': strike,
+            'Fecha_vencimiento': vencimiento,
+            'Direccion': direccion,
+            'Rendimiento': rendimiento}
+    if rows:
+        rows.append({c['id']: info[c['id']] for c in columns})
+    else:
+        rows = [{c['id']: info[c['id']] for c in columns}]
+
+    return rows
 
 
 if __name__ == '__main__':
