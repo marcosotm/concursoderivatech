@@ -122,10 +122,11 @@ app.layout = html.Div(
      State('direccion', 'value'),
      State('grafico', 'value')]
 )
-def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
+def build_graph(boton1, ticker: str, vencimiento, strike, direccion, grafico):
     if ticker is None:
         raise PreventUpdate
     else:
+
         response = requests.get('https://sandbox.tradier.com/v1/markets/history',
                                 params={'symbol': ticker, 'interval': 'daily', 'start': '2021-01-01'},
                                 headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
@@ -169,47 +170,45 @@ def build_graph(boton, ticker: str, vencimiento, strike, direccion, grafico):
 
             if direccion == 'Up':
                 calls = chain.loc[(chain.option_type == 'call') &
-                                  (chain.strike >= underlying_price * 0.80 - 5) &
+                                  (chain.strike >= strike * 0.80 - 5) &
                                   (chain.strike <= strike)].reset_index().drop(['index'], axis=1)
-
-                longs = [{'K': calls['strike'].loc[i], 'Price': calls['ask'].loc[i]} for i in range(len(calls))]
 
                 spreads = []
 
                 short_p = calls.iloc[-1]['bid']
 
-                l = len(longs)
+                l = len(calls)
 
                 for i in range(l):
 
-                    if not longs[i]['K'] == strike:
-                        prima = (longs[i]['Price'] - short_p + 12.12 / 100) / (strike - longs[i]['K'])
-                        spreads.append(prima)
+                    if not calls.iloc[i]['strike'] == strike:
+                        rend = ((strike - calls.iloc[i]['strike']) / (calls.iloc[i]['ask'] - short_p) - 1) * 100
+                        spreads.append(rend)
 
-                result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
+                result = sorted(spreads)[-1]
 
                 return (precio, '{}%'.format(round(result, 2)))
 
             else:
                 puts = chain.loc[(chain.option_type == 'put') &
                                  (chain.strike >= strike) &
-                                 (chain.strike <= strike * 1.25)].reset_index().drop(['index'], axis=1)
+                                 (chain.strike <= strike * 1.20 + 5)].reset_index().drop(['index'], axis=1)
 
                 longs = [{'K': puts['strike'].loc[i], 'Price': puts['ask'].loc[i]} for i in range(len(puts))]
 
                 spreads = []
 
-                short_p = puts['bid'].loc[0]
+                short_p = puts.iloc[0]['bid']
 
                 l = len(longs)
 
                 for i in range(l):
 
                     if not longs[i]['K'] == strike:
-                        prima = (longs[i]['Price'] - short_p + 12.12 / 100) / (longs[i]['K'] - strike)
-                        spreads.append(prima)
+                        rend = ((puts.iloc[i]['strike'] - strike) / (puts.iloc[i]['ask'] - short_p) - 1) * 100
+                        spreads.append(rend)
 
-                result = [(1 / (i / 0.75) - 1) * 100 for i in sorted(spreads)][0]
+                result = sorted(spreads)[-1]
 
                 return (precio, '{}%'.format(round(result, 2)))
 
@@ -235,7 +234,7 @@ def precio_subyacente(ticker):
 )
 def expiry_options(ticker):
     response = requests.get('https://sandbox.tradier.com/v1/markets/options/expirations',
-                            params={'symbol': 'AAPL', 'includeAllRoots': 'true', 'strikes': 'false'},
+                            params={'symbol': ticker, 'includeAllRoots': 'true', 'strikes': 'false'},
                             headers={'Authorization': 'Bearer FPgRB3GGnWkgtDMS77RpLggrcd8d',
                                      'Accept': 'application/json'}
                             )
@@ -276,10 +275,8 @@ def add_row(n_clicks, rows, columns, ticker, strike, vencimiento, direccion, ren
             'Fecha_vencimiento': vencimiento,
             'Direccion': direccion,
             'Rendimiento': rendimiento}
-    if rows:
-        rows.append({c['id']: info[c['id']] for c in columns})
-    else:
-        rows = [{c['id']: info[c['id']] for c in columns}]
+
+    rows.append({c['id']: info[c['id']] for c in columns})
 
     return rows
 
