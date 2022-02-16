@@ -49,8 +49,8 @@ Una vez seleccionada la fecha de vencimiento, se filtran todos los Strikes dispo
 
 El rendimiento es calculado de la siguiente manera:
 
-$$Rendimiento = \dfrac{Max PayOff}{Cost}$$
+\[Rendimiento = \dfrac{Max PayOff}{Cost}\]
 
-Donde $Max Payoff$ es la ganancia máxima que se obtiene al superar el strike en la fecha de vencimiento y $Cost$ es el costo neto de los contratos de opciones.
+Donde \(Max Payoff\) es la ganancia máxima que se obtiene al superar el strike en la fecha de vencimiento y \(Cost\) es el costo neto de los contratos de opciones.
 
 
