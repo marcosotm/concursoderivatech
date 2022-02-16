@@ -6,7 +6,9 @@
 Esta aplicación web fue la base sobre la que se creó la interfaz del primer Reto Derivatech36, llevado a cabo durante agosto y semptiembre del año 2021.
 Las bases del concurso fueron publicadas en https://derivatech.mx/derivatech360/
 
-<img src = "https://derivatech.mx/derivatech360/assets/images/derivatech360.png" height = "100" align = "center" td bgcolor = # 7FFFD4/>
+<div style="background-color:rgba(37, 41, 88); text-align:center; vertical-align: middle; padding:40px 0;">
+<img src = "https://derivatech.mx/derivatech360/assets/images/derivatech360.png" height = "100" align = "center"/>
+</div>
 
 
 Para utilizar la aplicación web visita el siguiente enlace: http://motmotm.pythonanywhere.com/
